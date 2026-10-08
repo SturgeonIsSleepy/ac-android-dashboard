@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application android:theme="@style/AppTheme" android:label="AC 外屏仪表" android:icon="@drawable/ic_launcher"
+        android:allowBackup="false" android:supportsRtl="true">
+        <activity android:name=".SettingsActivity" android:exported="false" android:resizeableActivity="true" android:screenOrientation="sensorLandscape" />
+        <activity android:name=".MainActivity" android:exported="true" android:resizeableActivity="true"
+            android:configChanges="screenSize|smallestScreenSize|orientation|density|keyboardHidden"
+            android:launchMode="singleTop" android:screenOrientation="sensorLandscape">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

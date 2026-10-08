@@ -1,0 +1,2 @@
+*.png binary
+vendor/assettocorsasharedmemory/** -text whitespace=-blank-at-eol
