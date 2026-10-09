@@ -90,6 +90,8 @@ class Bridge
         raceContext = new RaceContext(gameRoot);
         Console.CancelKeyPress += delegate(object sender, ConsoleCancelEventArgs e) { e.Cancel = true; running = false; };
         using (UdpClient udp = new UdpClient(new IPEndPoint(IPAddress.Any, Port)))
+        using (var tcp = new TcpRelay(Port+1))
+        using (var usb = new UsbLink())
         {
             // Windows reports ICMP from a closed phone/probe port on the next Receive.
             // Disable that UDP connection reset; other subscribers must keep receiving.
@@ -112,7 +114,11 @@ class Bridge
                 {
                     IPEndPoint peer = new IPEndPoint(IPAddress.Any, 0);
                     byte[] hello = udp.Receive(ref peer);
-                    if ((hello.Length != 16 && hello.Length != 84) || BitConverter.ToInt32(hello, 0) != Magic || BitConverter.ToInt32(hello, 4) != 3) continue;
+                    if ((hello.Length != 16 && hello.Length != 84) || BitConverter.ToInt32(hello, 0) != Magic) continue;
+                    if (hello.Length == 16 && BitConverter.ToInt32(hello,4) == 7) {
+                        Array.Copy(BitConverter.GetBytes(4),0,hello,4,4); Send(udp,hello,peer); continue;
+                    }
+                    if (BitConverter.ToInt32(hello,4) != 3) continue;
                     if (!clients.ContainsKey(peer)) clients[peer] = new ClientInfo();
                     var client = clients[peer]; client.Seen = now;
                     if (hello.Length == 84)
@@ -168,6 +174,7 @@ class Bridge
                     if (g.Status != AC_STATUS.AC_OFF) LoadRoute(s.Track, s.TrackConfiguration);
                 }
                 byte[] frame = Telemetry(p, g, s);
+                tcp.Publish(frame,mapPacket);
                 totalFrames++;
                 foreach (var peer in new List<IPEndPoint>(clients.Keys))
                 {
@@ -178,10 +185,12 @@ class Bridge
                 {
                     string status = demo ? "演示数据" : g.Status == AC_STATUS.AC_OFF ? "等待游戏" :
                         g.Status == AC_STATUS.AC_PAUSE ? "暂停" : g.Status == AC_STATUS.AC_REPLAY ? "回放" : "实时";
+                    var connected = new Dictionary<IPEndPoint,ClientInfo>(clients);
+                    foreach (var pair in tcp.Clients(now)) connected[pair.Key] = pair.Value;
                     dashboard.Render(now, status, s.Track ?? "—", s.CarModel ?? "—", p.Rpms, p.Gear, p.SpeedKmh,
-                        route.Length, guide == null ? 0 : guide.Cues.Count, totalFrames, sentBytes,
-                        now <= renderTime ? 0 : (totalFrames-renderedFrames)/(now-renderTime), clients, gameRoot,
-                        BitConverter.ToInt32(frame,428) == 1, raceContext.PitLimit);
+                        route.Length, guide == null ? 0 : guide.Cues.Count, totalFrames, sentBytes+tcp.SentBytes,
+                        now <= renderTime ? 0 : (totalFrames-renderedFrames)/(now-renderTime), connected, gameRoot,
+                        BitConverter.ToInt32(frame,428) == 1, raceContext.PitLimit,usb.Status);
                     renderedFrames = totalFrames; renderTime = now; nextRender = now + .5;
                 }
             }

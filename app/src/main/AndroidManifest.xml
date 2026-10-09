@@ -3,7 +3,6 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <application android:theme="@style/AppTheme" android:label="AC 外屏仪表" android:icon="@drawable/ic_launcher"
         android:allowBackup="false" android:supportsRtl="true">
-        <activity android:name=".SettingsActivity" android:exported="false" android:resizeableActivity="true" android:screenOrientation="sensorLandscape" />
         <activity android:name=".MainActivity" android:exported="true" android:resizeableActivity="true"
             android:configChanges="screenSize|smallestScreenSize|orientation|density|keyboardHidden"
             android:launchMode="singleTop" android:screenOrientation="sensorLandscape">

@@ -1,4 +1,4 @@
-ACFlip Windows bridge 0.8.1
+ACFlip Windows bridge 0.8.2
 
 The Windows bridge is distributed under GNU GPL version 2.
 See acd-GPL-2.0.txt for the complete license.
@@ -11,4 +11,4 @@ The unmodified AssettoCorsaSharedMemory structures retain their original
 MIT license in vendor/assettocorsasharedmemory/LICENSE.
 
 Complete corresponding bridge source and build script are supplied in
-ACFlip-bridge-source-0.8.1.zip. No game content is redistributed.
+ACFlip-bridge-source-0.8.2.zip. No game content is redistributed.

@@ -59,9 +59,9 @@ try:
     image=Image.open(path).convert('RGB')
     for box in ((26,338,225,391),(236,338,435,391),(446,338,646,391)):
         assert sum(min(p)>180 for p in image.crop(box).get_flattened_data())>450,'Finished sector value was cleared'
-    time.sleep(5.3);text=metrics('after-hold-retained')
-    assert 'shownSectors=[46816, 70453, 46135]' in text,text
-    capture('after-hold-still-retained')
+    time.sleep(5.3);text=metrics('after-hold-new-lap')
+    assert 'held=false' in text and 'shownSectors=[0, 0, 0]' in text,text
+    capture('after-hold-new-lap')
     feed(next_s1);time.sleep(5.3);text=metrics('next-first-sector')
     assert 'shownSectors=[77033, 0, 0]' in text,text
     feed(s2);adb('shell','am','start','-W','--display','1','-n','cn.acflip.dash/.MainActivity','--ei','layout','0');time.sleep(1)

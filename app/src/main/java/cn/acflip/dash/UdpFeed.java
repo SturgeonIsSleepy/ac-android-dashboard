@@ -2,9 +2,15 @@ package cn.acflip.dash;
 
 import android.os.SystemClock;
 import android.util.Log;
+import java.io.Closeable;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -12,87 +18,149 @@ import java.nio.ByteOrder;
 final class UdpFeed {
     volatile Telemetry latest;
     volatile TrackMap map;
-    volatile long rttMillis = -1, received, lost;
-    volatile String error = "";
+    volatile long rttMillis = -1, wirelessRttMillis = -1, received, lost;
+    volatile String error = "", transport = "";
     volatile int width, height, display;
-    private volatile boolean running;
-    private volatile DatagramSocket socket;
+    private volatile int generation;
+    private Closeable connection;
     private Thread thread;
 
-    void start(String host) {
+    synchronized void start(String host) {
         stop();
-        running = true;
-        thread = new Thread(() -> receive(host), "ACFlip-UDP");
-        thread.start();
+        int token = generation;
+        thread = new Thread(() -> receive(host,token),"ACFlip-feed"); thread.start();
     }
-    void stop() {
-        running = false;
-        DatagramSocket s = socket;
-        if (s != null) s.close();
-        if (thread != null) {
-            thread.interrupt();
-            try { thread.join(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    synchronized void stop() {
+        generation++;
+        if (connection != null) try { connection.close(); } catch (IOException e) { Log.w("ACFlip","Close",e); }
+        connection = null;
+        if (thread != null) thread.interrupt();
+        thread = null; transport = "";
+    }
+    private boolean active(int token) { return token == generation && !Thread.currentThread().isInterrupted(); }
+    private synchronized boolean own(Closeable socket, int token) {
+        if (!active(token)) return false;
+        connection = socket; return true;
+    }
+    private synchronized void release(Closeable socket) { if (connection == socket) connection = null; }
+    private byte[] hello(boolean usb) {
+        ByteBuffer b = ByteBuffer.allocate(usb ? 92 : 84).order(ByteOrder.LITTLE_ENDIAN);
+        b.putInt(Telemetry.MAGIC).putInt(3).putLong(SystemClock.elapsedRealtimeNanos()).putLong(rttMillis)
+                .putLong(received).putLong(lost).putInt(width).putInt(height).putInt(display);
+        byte[] model = android.os.Build.MODEL.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        b.put(model,0,Math.min(31,model.length));
+        if (usb) b.putLong(84,wirelessRttMillis);
+        return b.array();
+    }
+    private synchronized boolean accept(byte[] bytes, int length, int token, String link) {
+        if (!active(token) || length < 8) return false;
+        ByteBuffer b = ByteBuffer.wrap(bytes,0,length).order(ByteOrder.LITTLE_ENDIAN);
+        if (b.getInt() != Telemetry.MAGIC) return false;
+        int kind = b.getInt(); long now = SystemClock.elapsedRealtimeNanos();
+        if (kind == 1) {
+            Telemetry next = Telemetry.parse(bytes,length,now); if (next == null) return false;
+            Telemetry previous = latest;
+            if (previous != null && now-previous.receivedNanos < 1_000_000_000L) {
+                int gap = next.sequence-previous.sequence; if (gap <= 0) return true;
+                lost += gap-1;
+            }
+            received++; latest = next;
+        } else if (kind == 2) {
+            TrackMap next = TrackMap.parse(bytes,length); if (next == null) return false; map = next;
+        } else if (kind == 4 && length == 16) {
+            long sent = b.getLong(); if (sent <= now && now-sent < 5_000_000_000L) rttMillis = (now-sent)/1_000_000L;
+        } else return false;
+        error = ""; transport = link; return true;
+    }
+    private void receive(String host, int token) {
+        while (active(token)) {
+            if (tcp("127.0.0.1",host,token,"USB")) continue;
+            if (!active(token)) return;
+            if (!host.trim().isEmpty() && tcp(host,host,token,"TCP")) continue;
+            if (!active(token)) return;
+            if (host.trim().isEmpty()) error = "长按屏幕设置电脑 IP";
+            else udp(host,token);
+            if (active(token)) try { Thread.sleep(250); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return; }
         }
-        socket = null;
     }
-    private void receive(String host) {
-        if (host.trim().isEmpty()) { error = "长按屏幕设置电脑 IP"; return; }
-        byte[] buffer = new byte[1200];
-        long nextHello = 0;
-        while (running) {
-        try (DatagramSocket s = new DatagramSocket()) {
-            socket = s;
-            s.connect(InetAddress.getByName(host), 9876);
-            s.setSoTimeout(250);
-            s.setReceiveBufferSize(65536);
-            error = "";
-            DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-            while (running) {
+    private boolean tcp(String host, String wirelessHost, int token, String link) {
+        boolean valid = false;
+        Socket socket = new Socket();
+        try (Socket close = socket) {
+            if (!own(socket,token)) return false;
+            socket.connect(new InetSocketAddress(host,9877),350);
+            socket.setTcpNoDelay(true); socket.setSoTimeout(1500);
+            if (link.equals("USB") && !wirelessHost.trim().isEmpty())
+                new Thread(() -> wirelessProbe(wirelessHost,token,socket),"ACFlip-wireless-RTT").start();
+            DataInputStream input = new DataInputStream(socket.getInputStream());
+            DataOutputStream output = new DataOutputStream(socket.getOutputStream());
+            long nextHello = 0;
+            while (active(token)) {
                 long now = SystemClock.elapsedRealtimeNanos();
                 if (now >= nextHello) {
-                    ByteBuffer b = ByteBuffer.allocate(84).order(ByteOrder.LITTLE_ENDIAN)
-                            .putInt(Telemetry.MAGIC).putInt(3).putLong(now).putLong(rttMillis)
-                            .putLong(received).putLong(lost).putInt(width).putInt(height).putInt(display);
-                    byte[] name = android.os.Build.MODEL.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                    b.put(name, 0, Math.min(31, name.length));
-                    byte[] hello = b.array();
-                    s.send(new DatagramPacket(hello, hello.length));
-                    nextHello = now + 1_000_000_000L;
+                    if (!link.equals("USB") && usbAvailable()) break;
+                    byte[] packet = hello(link.equals("USB")); output.writeInt(Integer.reverseBytes(packet.length)); output.write(packet); output.flush();
+                    nextHello = now+1_000_000_000L;
+                }
+                int size = Integer.reverseBytes(input.readInt()); if (size < 8 || size > 1200) break;
+                byte[] packet = new byte[size]; input.readFully(packet);
+                if (!accept(packet,size,token,link)) break;
+                valid = true;
+            }
+        } catch (IOException e) { if (active(token) && valid) Log.w("ACFlip",link+" reconnect",e); }
+        finally { release(socket); }
+        return valid;
+    }
+    private boolean usbAvailable() {
+        try (Socket probe = new Socket()) { probe.connect(new InetSocketAddress("127.0.0.1",9877),50); return true; }
+        catch (IOException e) { return false; }
+    }
+    private void wirelessProbe(String host, int token, Socket usb) {
+        wirelessRttMillis = -1;
+        try (DatagramSocket probe = new DatagramSocket()) {
+            probe.connect(InetAddress.getByName(host),9876); probe.setSoTimeout(300);
+            byte[] bytes = new byte[16]; DatagramPacket reply = new DatagramPacket(bytes,bytes.length);
+            long nextPing = 0, lastPong = 0;
+            while (active(token) && !usb.isClosed()) {
+                long now = SystemClock.elapsedRealtimeNanos();
+                if (now >= nextPing) {
+                    byte[] ping = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN)
+                            .putInt(Telemetry.MAGIC).putInt(7).putLong(now).array();
+                    probe.send(new DatagramPacket(ping,ping.length)); nextPing = now+1_000_000_000L;
+                }
+                try {
+                    reply.setLength(bytes.length); probe.receive(reply);
+                    ByteBuffer b = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
+                    if (reply.getLength() == 16 && b.getInt() == Telemetry.MAGIC && b.getInt() == 4) {
+                        now = SystemClock.elapsedRealtimeNanos(); long sent = b.getLong();
+                        if (sent <= now && now-sent < 3_000_000_000L && active(token)) {
+                            wirelessRttMillis = (now-sent)/1_000_000L; lastPong = now;
+                        }
+                    }
+                } catch (SocketTimeoutException e) { }
+                if (SystemClock.elapsedRealtimeNanos()-lastPong > 3_000_000_000L && active(token)) wirelessRttMillis = -1;
+            }
+        } catch (IOException e) { if (active(token)) wirelessRttMillis = -1; }
+    }
+    private void udp(String host, int token) {
+        DatagramSocket socket = null;
+        try {
+            socket = new DatagramSocket(); if (!own(socket,token)) return;
+            socket.connect(InetAddress.getByName(host),9876); socket.setSoTimeout(250); socket.setReceiveBufferSize(65536);
+            byte[] buffer = new byte[1200]; DatagramPacket packet = new DatagramPacket(buffer,buffer.length);
+            long nextHello = 0, lastPacket = SystemClock.elapsedRealtimeNanos();
+            while (active(token)) {
+                long now = SystemClock.elapsedRealtimeNanos();
+                if (now >= nextHello) {
+                    if (usbAvailable()) return;
+                    byte[] data = hello(false); socket.send(new DatagramPacket(data,data.length)); nextHello = now+1_000_000_000L;
                 }
                 packet.setLength(buffer.length);
-                try { s.receive(packet); } catch (SocketTimeoutException e) { continue; }
-                now = SystemClock.elapsedRealtimeNanos();
-                int length = packet.getLength();
-                if (length < 8) continue;
-                ByteBuffer b = ByteBuffer.wrap(buffer, 0, length).order(ByteOrder.LITTLE_ENDIAN);
-                if (b.getInt() != Telemetry.MAGIC) continue;
-                int kind = b.getInt();
-                if (kind == 1) {
-                    Telemetry next = Telemetry.parse(buffer, length, now);
-                    if (next == null) continue;
-                    Telemetry previous = latest;
-                    // Restarted bridge sequences become acceptable once the previous stream is stale.
-                    if (previous != null && now - previous.receivedNanos < 1_000_000_000L) {
-                        int gap = next.sequence - previous.sequence;
-                        if (gap <= 0) continue;
-                        lost += gap - 1;
-                    }
-                    received++;
-                    latest = next;
-                } else if (kind == 2) {
-                    TrackMap next = TrackMap.parse(buffer, length);
-                    if (next != null) map = next;
-                } else if (kind == 4 && length == 16) {
-                    long sent = b.getLong();
-                    if (sent <= now && now - sent < 5_000_000_000L) rttMillis = (now - sent) / 1_000_000L;
-                }
+                try { socket.receive(packet); }
+                catch (SocketTimeoutException e) { if (now-lastPacket > 2_000_000_000L) return; else continue; }
+                if (accept(buffer,packet.getLength(),token,"UDP")) lastPacket = SystemClock.elapsedRealtimeNanos();
             }
-        } catch (Exception e) {
-            if (running) { error = "连接失败  检查 IP 和网络"; Log.w("ACFlip", "UDP", e); }
-        }
-        if (running) {
-            try { Thread.sleep(1000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return; }
-        }
-        }
+        } catch (IOException e) { if (active(token)) { error = "连接失败  检查 IP 和网络"; Log.w("ACFlip","UDP",e); } }
+        finally { if (socket != null) { socket.close(); release(socket); } }
     }
 }

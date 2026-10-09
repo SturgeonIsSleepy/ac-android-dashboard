@@ -9,7 +9,7 @@ using System.Text;
 sealed class ClientInfo
 {
     public double Seen;
-    public long Rtt = -1, Received, Lost, Sent;
+    public long Rtt = -1, WirelessRtt = -1, Received, Lost, Sent;
     public int Width, Height, Display;
     public string Device = "探测客户端";
 }
@@ -47,14 +47,15 @@ sealed class ConsoleDashboard
 
     public void Render(double now, string game, string track, string car, int rpm, int gear,
         float speed, int routePoints, int cueCount, long totalFrames, long totalBytes, double hz,
-        Dictionary<IPEndPoint, ClientInfo> clients, string gameRoot, bool raceReady, float pitLimit)
+        Dictionary<IPEndPoint, ClientInfo> clients, string gameRoot, bool raceReady, float pitLimit, string usbStatus)
     {
         var b = new StringBuilder();
         b.AppendLine("AC FLIP 0.8   连接监视器");
         b.AppendLine("关闭本窗口即断开连接    Ctrl+C / Q 退出");
         b.AppendLine();
         b.AppendLine("电脑 IPv4"); b.AppendLine(addresses);
-        b.AppendLine("监听: 0.0.0.0:9876 UDP    游戏到手机: 局域网直传");
+        b.AppendLine("监听: UDP 9876 / TCP 9877    USB 优先，也支持局域网直传");
+        b.AppendLine("USB: "+usbStatus);
         b.AppendLine();
         b.AppendLine("游戏: " + game);
         b.AppendLine("赛道: " + track + "    车辆: " + car);
@@ -73,8 +74,9 @@ sealed class ConsoleDashboard
             var c = pair.Value;
             b.AppendLine("  " + pair.Key + "    " + c.Device);
             b.AppendLine("  屏幕: " + c.Width + "×" + c.Height + "  display " + c.Display +
-                "    RTT: " + (c.Rtt < 0 ? "等待测量" : c.Rtt + " ms") +
+                "    " + (IPAddress.IsLoopback(pair.Key.Address) ? "有线 RTT: " : "无线 RTT: ") + (c.Rtt < 0 ? "等待测量" : c.Rtt + " ms") +
                 "    心跳: " + (now-c.Seen).ToString("F1") + " s");
+            if (IPAddress.IsLoopback(pair.Key.Address)) b.AppendLine("  无线 RTT: " + (c.WirelessRtt < 0 ? "未连接或等待测量" : c.WirelessRtt+" ms") + "    仅探测，不传仪表数据");
             b.AppendLine("  本窗口发送: " + c.Sent + "    手机累计接收: " + c.Received + "    手机累计丢帧: " + c.Lost);
         }
         if (clients.Count == 0) b.AppendLine("  等待手机连接，在手机连接页填入上方电脑 IP");

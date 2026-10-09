@@ -22,11 +22,16 @@ public class LapTimingCheck {
         expect(timer.shownSectors(tick)[2] == 30000, "Finished sector values remain visible during hold");
         expect(timer.clockColor(finish,tick) == 3, "Best completed lap purple");
         expect(timer.shownTime(finish,tick+5_000_000_000L) == finish.current, "Return to new lap after hold");
-        expect(timer.shownSectors(tick+5_000_000_000L)[2] == 30000, "Keep previous splits until the new lap produces a split");
+        expect(timer.shownTime(finish,tick+3_999_999_999L) == 90000 && timer.shownSectors(tick+3_999_999_999L)[2] == 30000,
+                "Lap time and completed splits remain visible until the same hold deadline");
+        expect(timer.shownTime(finish,tick+4_000_000_000L) == finish.current
+                && java.util.Arrays.equals(timer.shownSectors(tick+4_000_000_000L),new int[3])
+                && java.util.Arrays.equals(timer.shownColors(tick+4_000_000_000L),new int[3]),
+                "Lap time, sector values and colors return to the new lap together");
         timer.update(frame(1,1,31000,90000,90000));
         expect(timer.colors[0] == 2, "Slower than reference yellow");
         expect(timer.shownSectors(tick+5_000_000_000L)[0] == 31000 && timer.shownSectors(tick+5_000_000_000L)[1] == 0,
-                "First new split replaces previous-lap display");
+                "New lap shows only its completed splits");
         timer.update(frame(1,2,29000,90000,90000));
         expect(timer.colors[1] == 3, "New sector best purple");
         timer.update(frame(2,0,30000,90000,90000));

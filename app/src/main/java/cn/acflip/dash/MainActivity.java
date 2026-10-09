@@ -108,9 +108,17 @@ public class MainActivity extends Activity {
     private void settings() {
         dashboard.createPreviews();
         Telemetry t = feed.latest;
-        Intent intent = new Intent(this, SettingsActivity.class);
-        if (t != null) intent.putExtra("car", t.car).putExtra("maxRpm", t.maxRpm);
-        startActivity(intent);
+        SettingsDialog settings = new SettingsDialog(this,t == null ? 0 : t.maxRpm,t == null ? "" : t.car);
+        settings.setOnDismissListener(dialog -> {
+            String nextHost = getPreferences(0).getString("host",host);
+            if (!nextHost.equals(host)) { host = nextHost; feed.start(host); }
+            shiftCar = "";
+            applyLayout(getPreferences(0).getInt("layout",layout));
+            lapStyles = RacePhase.styles(getPreferences(0).getString("lapStyles","9"));
+            volumeUp = volumeDown = false;
+            dashboard.burnIn.touch(SystemClock.elapsedRealtime()); dashboard.invalidate();
+        });
+        settings.show();
     }
     static int layoutFor(int page, int style, int guide) {
         return page == 0 ? Math.max(0, Math.min(3, style)) : page == 1 ? 4 : page == 2 ? 5 : page == 3 ? 6+Math.min(1,guide) : page == 4 ? 8 : 9;
@@ -222,7 +230,7 @@ public class MainActivity extends Activity {
             if (now - lastLog >= 5_000_000_000L) {
                 double seconds = lastLog == 0 ? 5 : (now - lastLog) / 1_000_000_000.0;
                 String metrics = String.format(Locale.US,
-                        "display=%d view=%dx%d page=%d rx=%d lost=%d RTT=%dms receiveToDraw=%dms draws=%.1f/s status=%d seq=%d map=%d shift=%.3f,%.3f dim=%s sectors=%d drs=%d style=%d scale=%d limit=%d drsDistance=%.1f guide=%d pit=%d pitLimit=%.0f context=%s ideal=%d recommended=%d phase=%d runLap=%d runStyle=%d held=%s shownSectors=%s startDistance=%.1f",
+                        "display=%d view=%dx%d page=%d rx=%d lost=%d RTT=%dms receiveToDraw=%dms draws=%.1f/s status=%d seq=%d map=%d shift=%.3f,%.3f dim=%s sectors=%d drs=%d style=%d scale=%d limit=%d drsDistance=%.1f guide=%d pit=%d pitLimit=%.0f context=%s ideal=%d recommended=%d phase=%d runLap=%d runStyle=%d held=%s shownSectors=%s startDistance=%.1f link=%s",
                         getDisplay().getDisplayId(), getWidth(), getHeight(), page, feed.received, feed.lost,
                         feed.rttMillis, t == null ? -1 : age, (drawCount - previousCount) / seconds,
                         t == null ? -1 : t.status, t == null ? -1 : t.sequence, feed.map == null ? 0 : feed.map.xs.length,
@@ -230,7 +238,7 @@ public class MainActivity extends Activity {
                         style, t == null ? 0 : t.rpmScale(), t == null ? 0 : t.maxRpm, t == null ? -1 : t.drsDistance,
                         guideStyle, t == null ? 0 : t.pit, t == null ? 0 : t.pitSpeedLimit, t != null && t.raceContext,
                         lapTiming.idealTime(), t == null ? 0 : shift(t), phase.stage, phase.lapNumber, phase.selected(lapStyles),
-                        lapTiming.finished(now), java.util.Arrays.toString(lapTiming.shownSectors(now)), t == null ? -1 : OutlapStatus.startDistance(t));
+                        lapTiming.finished(now), java.util.Arrays.toString(lapTiming.shownSectors(now)), t == null ? -1 : OutlapStatus.startDistance(t),feed.transport);
                 Log.i("ACFlip", metrics);
                 // Some vivo builds suppress app logcat. Keep the latest small diagnostic snapshot.
                 final String snapshot = metrics;
@@ -687,16 +695,19 @@ public class MainActivity extends Activity {
             text(c,"出场圈",30,31,24,white,bold);
             float distance = OutlapStatus.startDistance(t), target = preview ? .65f : OutlapStatus.startFill(t);
             outlapFill += (target-outlapFill)*Math.min(1,frameSeconds*10);
-            if (distance >= 0 && distance <= 300) rightText(c,Math.round(distance)+"m",588,31,24,green,bold);
-            box(c,30,49,622,13,panel);
-            box(c,30,49,311*outlapFill,13,green); box(c,652-311*outlapFill,49,311*outlapFill,13,green);
+            if (distance >= 0 && distance <= 300) rightText(c,"飞驰圈 "+Math.round(distance)+"m",588,31,26,green,bold);
+            box(c,30,43,622,30,panel);
+            box(c,30,43,311*outlapFill,30,green); box(c,652-311*outlapFill,43,311*outlapFill,30,green);
+            if (distance >= 0 && distance <= 300) {
+                p.setStyle(Paint.Style.STROKE); p.setColor(green); p.setStrokeWidth(3);
+                c.drawRoundRect(30,43,652,73,5,5,p);
+            }
             tyreThermal(c,t,0,31,82); tyreThermal(c,t,1,227,82);
             tyreThermal(c,t,2,31,205); tyreThermal(c,t,3,227,205);
             int weather = t.trackCondition(); art.icon(c,weather == 0 ? 6 : 7,432,79,65,weather == 0 ? amber : weather > 0 ? blue : muted);
             rightText(c,weather == 0 ? "DRY" : weather == 1 ? "DAMP" : weather == 2 ? "WET" : "—",652,130,40,white,bold);
             text(c,t.roadTemperature < -50 ? "路温 —" : "路温 "+Math.round(t.roadTemperature)+"°C",435,179,28,white,bold);
             text(c,t.grip < 0 ? "抓地 —" : String.format(Locale.US,"抓地 %.0f%%",t.grip*100),435,219,28,t.grip >= .97f ? green : amber,bold);
-            art.number(c,clockText(t,now),544,269,40,214,timingColor(lapTiming.clockColor(t,now)));
             art.icon(c,0,433,284,30,t.lowFuel() ? red : white);
             rightText(c,String.format(Locale.US,"%.1f L",t.fuel),652,311,30,t.lowFuel() ? red : white,bold);
             String[] problems = OutlapStatus.problems(t);

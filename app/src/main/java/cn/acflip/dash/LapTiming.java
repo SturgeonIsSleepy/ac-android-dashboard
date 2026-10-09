@@ -81,11 +81,6 @@ final class LapTiming {
         float delta = shownDelta(t, now);
         return !Float.isFinite(delta) || delta == 0 ? 0 : delta < 0 ? 1 : 2;
     }
-    private boolean showPreviousSectors(long now) {
-        if (finished(now)) return true;
-        for (int value : sectors) if (value > 0) return false;
-        return finishedAt != 0;
-    }
-    int[] shownColors(long now) { return showPreviousSectors(now) ? finishedColors : colors; }
-    int[] shownSectors(long now) { return showPreviousSectors(now) ? finishedSectors : sectors; }
+    int[] shownColors(long now) { return finished(now) ? finishedColors : colors; }
+    int[] shownSectors(long now) { return finished(now) ? finishedSectors : sectors; }
 }
