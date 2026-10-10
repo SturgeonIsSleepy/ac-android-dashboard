@@ -13,12 +13,14 @@ sealed class TcpRelay : IDisposable
     readonly TcpListener listener;
     readonly List<Peer> peers = new List<Peer>();
     readonly Stopwatch clock = Stopwatch.StartNew();
+    readonly MirrorSource mirror;
     volatile byte[] latest, map;
     volatile bool closed;
     long sentBytes;
     public long SentBytes { get { return Interlocked.Read(ref sentBytes); } }
-    public TcpRelay(int port)
+    public TcpRelay(int port, MirrorSource source)
     {
+        mirror = source;
         listener = new TcpListener(IPAddress.Any,port); listener.Start();
         new Thread(Accept) { IsBackground = true, Name = "ACFlip-TCP-accept" }.Start();
     }
@@ -36,7 +38,12 @@ sealed class TcpRelay : IDisposable
             catch (ObjectDisposedException) { return; }
         }
     }
-    public void Publish(byte[] frame, byte[] route) { map = route; latest = frame; }
+    public void Publish(byte[] frame, byte[] route) {
+        map = route; latest = frame;
+        int selected = 0;
+        lock (peers) foreach (var peer in peers) if (peer.Alive && peer.Subscribed && peer.MirrorView != 0) selected = peer.MirrorView;
+        mirror.Selected = selected;
+    }
     public Dictionary<IPEndPoint,ClientInfo> Clients(double now)
     {
         var result = new Dictionary<IPEndPoint,ClientInfo>();
@@ -70,7 +77,8 @@ sealed class TcpRelay : IDisposable
         readonly object send = new object();
         public readonly ClientInfo Info = new ClientInfo();
         public readonly IPEndPoint Endpoint;
-        public volatile bool Alive = true, Subscribed;
+        public volatile bool Alive = true, Subscribed, SettingsSupported;
+        public volatile int MirrorView;
         public Peer(TcpRelay parent, TcpClient socket)
         {
             owner = parent; client = socket; client.NoDelay = true;
@@ -89,9 +97,16 @@ sealed class TcpRelay : IDisposable
                 while (Alive && !owner.closed)
                 {
                     byte[] prefix = ReadBytes(4); int size = BitConverter.ToInt32(prefix,0);
-                    if (size != 84 && size != 92 && size != 16) break;
+                    if (size != 84 && size != 92 && size != 96 && size != 100 && size != 20 && size != 16) break;
                     byte[] hello = ReadBytes(size);
-                    if (BitConverter.ToInt32(hello,0) != 0x31464341 || BitConverter.ToInt32(hello,4) != 3) break;
+                    if (BitConverter.ToInt32(hello,0) != 0x31464341) break;
+                    int kind = BitConverter.ToInt32(hello,4);
+                    if (size == 20 && kind == 9 && Subscribed && SettingsSupported) {
+                        int view = BitConverter.ToInt32(hello,8), field = BitConverter.ToInt32(hello,12);
+                        if (field == 6) owner.mirror.Settings.Reset(view); else owner.mirror.Settings.Set(view,field,BitConverter.ToSingle(hello,16));
+                        continue;
+                    }
+                    if (kind != 3 || size == 20) break;
                     lock (Info)
                     {
                         Info.Seen = owner.clock.Elapsed.TotalSeconds;
@@ -101,7 +116,10 @@ sealed class TcpRelay : IDisposable
                             Info.Lost = BitConverter.ToInt64(hello,32); Info.Width = BitConverter.ToInt32(hello,40);
                             Info.Height = BitConverter.ToInt32(hello,44); Info.Display = BitConverter.ToInt32(hello,48);
                             Info.Device = Encoding.UTF8.GetString(hello,52,32).TrimEnd('\0')+(IPAddress.IsLoopback(Endpoint.Address) ? "  USB" : "  TCP");
-                            Info.WirelessRtt = size == 92 ? BitConverter.ToInt64(hello,84) : -1;
+                            Info.WirelessRtt = size >= 92 ? BitConverter.ToInt64(hello,84) : -1;
+                            int requested = size >= 96 ? BitConverter.ToInt32(hello,92) : 0;
+                            MirrorView = requested >= 0 && requested <= 3 ? requested : 0;
+                            SettingsSupported = size == 100 && BitConverter.ToInt32(hello,96) == 1;
                         }
                         Subscribed = true;
                     }
@@ -121,17 +139,25 @@ sealed class TcpRelay : IDisposable
         }
         void Write()
         {
-            byte[] previous = null, previousMap = null;
+            byte[] previous = null, previousMap = null, previousMirror = null, previousSettings = null, previousSettingsStatus = null;
             try
             {
                 while (Alive && !owner.closed)
                 {
                     byte[] frame = owner.latest, route = owner.map;
+                    byte[] settings = owner.mirror.Settings.Packet;
+                    if (Subscribed && SettingsSupported && settings != previousSettings) { Send(settings); previousSettings = settings; }
+                    byte[] settingsStatus = owner.mirror.Settings.ErrorPacket;
+                    if (Subscribed && SettingsSupported && settingsStatus != previousSettingsStatus) { Send(settingsStatus); previousSettingsStatus = settingsStatus; }
                     if (Subscribed && route != null && route != previousMap) { Send(route); previousMap = route; }
                     if (Subscribed && frame != null && frame != previous)
                     {
                         Send(frame); previous = frame;
                         lock (Info) Info.Sent++;
+                    }
+                    byte[] image = owner.mirror.Latest;
+                    if (Subscribed && MirrorView != 0 && image != null && image != previousMirror && BitConverter.ToInt32(image,8) == MirrorView) {
+                        Send(image); previousMirror = image;
                     }
                     Thread.Sleep(2);
                 }

@@ -23,8 +23,8 @@ $env:GRADLE_USER_HOME = $GradleUserHome
 New-Item -ItemType Directory -Force -Path "$projectRoot\dist" | Out-Null
 & $gradle --no-daemon -p $projectRoot assembleDebug
 if ($LASTEXITCODE -ne 0) { throw 'Android build failed' }
-Copy-Item "$projectRoot\app\build\outputs\apk\debug\app-debug.apk" "$projectRoot\dist\ac-flip-0.8.2.apk"
+Copy-Item "$projectRoot\app\build\outputs\apk\debug\app-debug.apk" "$projectRoot\dist\ac-flip-0.9.0.apk"
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
-& $compiler /nologo /optimize+ /target:exe "/out:$projectRoot\dist\ACFlipBridge.exe" "$projectRoot\bridge\Bridge.cs" "$projectRoot\bridge\RallyGuide.cs" "$projectRoot\bridge\ConsoleDashboard.cs" "$projectRoot\bridge\DisplayTelemetry.cs" "$projectRoot\bridge\AcdReader.cs" "$projectRoot\bridge\RaceContext.cs" "$projectRoot\bridge\TcpRelay.cs" "$projectRoot\bridge\UsbLink.cs" "$projectRoot\vendor\assettocorsasharedmemory\Physics.cs" "$projectRoot\vendor\assettocorsasharedmemory\Graphics.cs" "$projectRoot\vendor\assettocorsasharedmemory\StaticInfo.cs"
+& $compiler /nologo /optimize+ /target:exe /reference:System.Drawing.dll "/out:$projectRoot\dist\ACFlipBridge.exe" "$projectRoot\bridge\Bridge.cs" "$projectRoot\bridge\RallyGuide.cs" "$projectRoot\bridge\ConsoleDashboard.cs" "$projectRoot\bridge\DisplayTelemetry.cs" "$projectRoot\bridge\AcdReader.cs" "$projectRoot\bridge\RaceContext.cs" "$projectRoot\bridge\TcpRelay.cs" "$projectRoot\bridge\UsbLink.cs" "$projectRoot\bridge\MirrorSource.cs" "$projectRoot\bridge\MirrorSettings.cs" "$projectRoot\vendor\assettocorsasharedmemory\Physics.cs" "$projectRoot\vendor\assettocorsasharedmemory\Graphics.cs" "$projectRoot\vendor\assettocorsasharedmemory\StaticInfo.cs"
 if ($LASTEXITCODE -ne 0) { throw 'Bridge build failed' }
-Write-Host 'Created dist/ac-flip-0.8.2.apk and dist/ACFlipBridge.exe'
+Write-Host 'Created dist/ac-flip-0.9.0.apk and dist/ACFlipBridge.exe'

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Globalization;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -20,18 +21,44 @@ sealed class ConsoleDashboard
     readonly bool redirected;
     readonly string metricsPath;
     public string LastError = "无";
+    int mirrorPage, mirrorField;
+    string mirrorNumber;
+    public bool MirrorKey(ConsoleKeyInfo key,MirrorSettings settings,int selected) {
+        if (mirrorPage == 0) { if (key.Key != ConsoleKey.M) return false; mirrorPage = selected > 0 ? selected : 1; return true; }
+        if (mirrorNumber != null) {
+            if (key.Key == ConsoleKey.Escape) mirrorNumber = null;
+            else if (key.Key == ConsoleKey.Backspace && mirrorNumber.Length > 0) mirrorNumber = mirrorNumber.Substring(0,mirrorNumber.Length-1);
+            else if (key.Key == ConsoleKey.Enter) {
+                float value;
+                if (float.TryParse(mirrorNumber,NumberStyles.Float,CultureInfo.InvariantCulture,out value)) settings.Set(mirrorPage,mirrorField,value);
+                mirrorNumber = null;
+            } else if (Char.IsDigit(key.KeyChar) || key.KeyChar == '-' || key.KeyChar == '.') mirrorNumber += key.KeyChar;
+            return true;
+        }
+        if (key.Key == ConsoleKey.Escape || key.Key == ConsoleKey.M) mirrorPage = 0;
+        else if (key.KeyChar >= '1' && key.KeyChar <= '3') mirrorPage = key.KeyChar-'0';
+        else if (key.Key == ConsoleKey.UpArrow) mirrorField = (mirrorField+5)%6;
+        else if (key.Key == ConsoleKey.DownArrow) mirrorField = (mirrorField+1)%6;
+        else if (key.Key == ConsoleKey.Enter) mirrorNumber = "";
+        else if (key.Key == ConsoleKey.R) settings.Reset(mirrorPage);
+        else if (key.Key == ConsoleKey.LeftArrow || key.Key == ConsoleKey.RightArrow) {
+            float step = MirrorSettings.Step[mirrorField]*((key.Modifiers&ConsoleModifiers.Shift) != 0 ? 5 : 1);
+            settings.Set(mirrorPage,mirrorField,settings.Get(mirrorPage)[mirrorField]+(key.Key == ConsoleKey.RightArrow ? step : -step));
+        }
+        return true;
+    }
 
     public ConsoleDashboard()
     {
         Console.OutputEncoding = Encoding.UTF8;
-        Console.Title = "AC FLIP 0.8  连接监视器";
+        Console.Title = "AC FLIP 0.9  连接监视器";
         redirected = Console.IsOutputRedirected;
         if (!redirected)
         {
             Console.CursorVisible = false;
             // Quick Edit selection pauses the entire console process on classic hosts.
             DisableQuickEdit();
-            try { Console.SetWindowSize(Math.Min(106, Console.LargestWindowWidth), Math.Min(34, Console.LargestWindowHeight)); }
+            try { Console.SetWindowSize(Math.Min(106, Console.LargestWindowWidth), Math.Min(44, Console.LargestWindowHeight)); }
             catch (IOException) { }
             Console.Clear();
         }
@@ -47,15 +74,25 @@ sealed class ConsoleDashboard
 
     public void Render(double now, string game, string track, string car, int rpm, int gear,
         float speed, int routePoints, int cueCount, long totalFrames, long totalBytes, double hz,
-        Dictionary<IPEndPoint, ClientInfo> clients, string gameRoot, bool raceReady, float pitLimit, string usbStatus)
+        Dictionary<IPEndPoint, ClientInfo> clients, string gameRoot, bool raceReady, float pitLimit, string usbStatus, string mirrorStatus,MirrorSettings settings)
     {
         var b = new StringBuilder();
-        b.AppendLine("AC FLIP 0.8   连接监视器");
+        b.AppendLine("AC FLIP 0.9   连接监视器");
         b.AppendLine("关闭本窗口即断开连接    Ctrl+C / Q 退出");
         b.AppendLine();
         b.AppendLine("电脑 IPv4"); b.AppendLine(addresses);
         b.AppendLine("监听: UDP 9876 / TCP 9877    USB 优先，也支持局域网直传");
         b.AppendLine("USB: "+usbStatus);
+        b.AppendLine("后视镜: "+mirrorStatus);
+        if (mirrorPage == 0) b.AppendLine("M 调整后视视野");
+        else {
+            b.AppendLine("后视视野："+(mirrorPage == 1 ? "左" : mirrorPage == 2 ? "中" : "右")+"    1 左  2 中  3 右");
+            b.AppendLine("上下选项  左右调整  Shift 加速  Enter 输入  R 默认  Esc 返回");
+            float[] values = settings.Get(mirrorPage);
+            for (int i = 0;i < 6;i++) b.AppendLine((i == mirrorField ? " > " : "   ")+MirrorSettings.Names[i]+"："+values[i].ToString(i < 3 ? "0.0" : "0.00",CultureInfo.InvariantCulture)+(i < 3 ? "°" : " m")+(i == mirrorField && mirrorNumber != null ? "  输入："+mirrorNumber : ""));
+            b.AppendLine("正值：朝右、抬头、右移、升高、前移");
+        }
+        if (settings.Error.Length != 0) b.AppendLine(settings.Error);
         b.AppendLine();
         b.AppendLine("游戏: " + game);
         b.AppendLine("赛道: " + track + "    车辆: " + car);
@@ -89,7 +126,7 @@ sealed class ConsoleDashboard
         {
             Console.SetCursorPosition(0, 0);
             string[] lines = screen.Replace("\r", "").Split('\n');
-            int width = Math.Max(1, Console.WindowWidth-1), height = Math.Min(Console.WindowHeight-1, 32);
+            int width = Math.Max(1, Console.WindowWidth-1), height = Math.Max(1, Console.WindowHeight-1);
             var output = new StringBuilder();
             for (int i = 0; i < height; i++)
             {

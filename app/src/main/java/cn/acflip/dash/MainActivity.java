@@ -85,6 +85,7 @@ public class MainActivity extends Activity {
         applyLayout(getPreferences(0).getInt("layout", layout));
         lapStyles = RacePhase.styles(getPreferences(0).getString("lapStyles","9"));
         volumeUp = volumeDown = false; feed.start(host);
+        feed.mirrorView = getPreferences(0).getInt("mirror",0);
         dashboard.burnIn.touch(SystemClock.elapsedRealtime()); dashboard.postInvalidateOnAnimation();
     }
     @Override protected void onPause() {
@@ -108,13 +109,14 @@ public class MainActivity extends Activity {
     private void settings() {
         dashboard.createPreviews();
         Telemetry t = feed.latest;
-        SettingsDialog settings = new SettingsDialog(this,t == null ? 0 : t.maxRpm,t == null ? "" : t.car);
+        SettingsDialog settings = new SettingsDialog(this,t == null ? 0 : t.maxRpm,t == null ? "" : t.car,feed);
         settings.setOnDismissListener(dialog -> {
             String nextHost = getPreferences(0).getString("host",host);
             if (!nextHost.equals(host)) { host = nextHost; feed.start(host); }
             shiftCar = "";
             applyLayout(getPreferences(0).getInt("layout",layout));
             lapStyles = RacePhase.styles(getPreferences(0).getString("lapStyles","9"));
+            feed.mirrorView = getPreferences(0).getInt("mirror",0);
             volumeUp = volumeDown = false;
             dashboard.burnIn.touch(SystemClock.elapsedRealtime()); dashboard.invalidate();
         });
@@ -212,6 +214,7 @@ public class MainActivity extends Activity {
             if (available) { lapTiming.update(t); phase.update(t); }
             if (!available || phase.stage != RacePhase.OUTLAP) outlapFill = 0;
             if (!available) waiting(c, t, fresh);
+            else if (feed.mirrorView != 0) mirror(c,now);
             else if (t.pit != 0) pit(c, t);
             else content(c, t, now);
             p.setColor(fresh ? green : red); p.setStyle(Paint.Style.FILL); c.drawCircle(655, 22, 5, p);
@@ -230,7 +233,7 @@ public class MainActivity extends Activity {
             if (now - lastLog >= 5_000_000_000L) {
                 double seconds = lastLog == 0 ? 5 : (now - lastLog) / 1_000_000_000.0;
                 String metrics = String.format(Locale.US,
-                        "display=%d view=%dx%d page=%d rx=%d lost=%d RTT=%dms receiveToDraw=%dms draws=%.1f/s status=%d seq=%d map=%d shift=%.3f,%.3f dim=%s sectors=%d drs=%d style=%d scale=%d limit=%d drsDistance=%.1f guide=%d pit=%d pitLimit=%.0f context=%s ideal=%d recommended=%d phase=%d runLap=%d runStyle=%d held=%s shownSectors=%s startDistance=%.1f link=%s",
+                        "display=%d view=%dx%d page=%d rx=%d lost=%d RTT=%dms receiveToDraw=%dms draws=%.1f/s status=%d seq=%d map=%d shift=%.3f,%.3f dim=%s sectors=%d drs=%d style=%d scale=%d limit=%d drsDistance=%.1f guide=%d pit=%d pitLimit=%.0f context=%s ideal=%d recommended=%d phase=%d runLap=%d runStyle=%d held=%s shownSectors=%s startDistance=%.1f link=%s mirror=%d mirrorFrames=%d mirrorAge=%dms",
                         getDisplay().getDisplayId(), getWidth(), getHeight(), page, feed.received, feed.lost,
                         feed.rttMillis, t == null ? -1 : age, (drawCount - previousCount) / seconds,
                         t == null ? -1 : t.status, t == null ? -1 : t.sequence, feed.map == null ? 0 : feed.map.xs.length,
@@ -238,7 +241,8 @@ public class MainActivity extends Activity {
                         style, t == null ? 0 : t.rpmScale(), t == null ? 0 : t.maxRpm, t == null ? -1 : t.drsDistance,
                         guideStyle, t == null ? 0 : t.pit, t == null ? 0 : t.pitSpeedLimit, t != null && t.raceContext,
                         lapTiming.idealTime(), t == null ? 0 : shift(t), phase.stage, phase.lapNumber, phase.selected(lapStyles),
-                        lapTiming.finished(now), java.util.Arrays.toString(lapTiming.shownSectors(now)), t == null ? -1 : OutlapStatus.startDistance(t),feed.transport);
+                        lapTiming.finished(now), java.util.Arrays.toString(lapTiming.shownSectors(now)), t == null ? -1 : OutlapStatus.startDistance(t),feed.transport,
+                        feed.mirrorView,feed.mirrorFrames,feed.mirrorFrame == null ? -1 : (now-feed.mirrorFrame.receivedNanos)/1_000_000L);
                 Log.i("ACFlip", metrics);
                 // Some vivo builds suppress app logcat. Keep the latest small diagnostic snapshot.
                 final String snapshot = metrics;
@@ -323,6 +327,17 @@ public class MainActivity extends Activity {
             centerText(c, "未检测到遥测数据", 341, 172, 29, muted, regular);
             box(c, 100, 218, 482, 65, panel);
             centerText(c, "连接", 341, 262, 31, white, bold);
+        }
+        private void mirror(Canvas c, long now) {
+            UdpFeed.MirrorFrame frame = feed.mirrorFrame;
+            if (frame != null && frame.view == feed.mirrorView && now-frame.receivedNanos <= 500_000_000L) {
+                float height = 682f*frame.bitmap.getHeight()/frame.bitmap.getWidth();
+                float top = (422-height)/2;
+                p.setColor(Color.WHITE); p.setStyle(Paint.Style.FILL); p.setFilterBitmap(true);
+                c.drawBitmap(frame.bitmap,null,new RectF(0,top,682,top+height),p);
+            } else centerText(c,"等待游戏后视镜",341,223,32,white,bold);
+            p.setStyle(Paint.Style.FILL); p.setColor(Color.BLACK); c.drawRect(0,0,682,38,p);
+            text(c,feed.mirrorView == 1 ? "左" : feed.mirrorView == 2 ? "中" : "右",25,31,24,white,bold);
         }
         private void centerText(Canvas c, String s, float x, float y, float size, int color, Typeface face) {
             p.setTextSize(size); p.setTypeface(face);

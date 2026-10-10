@@ -27,8 +27,17 @@ final class SettingsDialog extends Dialog {
     private int section, maximum;
     private String car;
     private int editingLap = -1;
-    SettingsDialog(Activity owner, int maxRpm, String currentCar) {
+    private final UdpFeed feed;
+    private int editingMirror = 1;
+    private SeekBar[] mirrorSliders;
+    private TextView[] mirrorValues;
+    private boolean[] mirrorDragging;
+    private TextView mirrorStatus;
+    private Button mirrorReset;
+    private Runnable mirrorRefresh;
+    SettingsDialog(Activity owner, int maxRpm, String currentCar, UdpFeed source) {
         super(owner);
+        feed = source;
         maximum = maxRpm; car = currentCar == null ? "" : currentCar;
         preferences = owner.getSharedPreferences("MainActivity",0);
     }
@@ -60,26 +69,29 @@ final class SettingsDialog extends Dialog {
         view.setOnClickListener(v -> action.run()); return view;
     }
     private void show(int page) {
+        stopMirrorRefresh();
         section = page;
         root = new LinearLayout(getContext()); root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(12), dp(5), dp(12), dp(4)); root.setBackgroundColor(Color.BLACK);
-        String[] titles = { "设置", "选择样式", "换挡转速", "电脑连接", "按圈切换" };
+        String[] titles = { "设置", "选择样式", "换挡转速", "电脑连接", "按圈切换", "后视镜", "调整" };
         LinearLayout header = new LinearLayout(getContext());
-        header.addView(label(titles[page],19),new LinearLayout.LayoutParams(0,dp(29),1));
-        if (page == 4) header.addView(button("启用", () -> { preferences.edit().putInt("layout",10).apply(); dismiss(); }),new LinearLayout.LayoutParams(dp(64),dp(29)));
+        header.addView(label(page == 6 ? new String[] {"左","中","右"}[editingMirror-1]+"后视镜调整" : titles[page],19),new LinearLayout.LayoutParams(0,dp(29),1));
+        if (page == 4) header.addView(button("启用", () -> { preferences.edit().putInt("layout",10).putInt("mirror",0).apply(); dismiss(); }),new LinearLayout.LayoutParams(dp(64),dp(29)));
+        if (page == 6) header.addView(button("预览", () -> dismiss()),new LinearLayout.LayoutParams(dp(64),dp(29)));
         root.addView(header);
         content = new LinearLayout(getContext()); content.setOrientation(LinearLayout.VERTICAL);
         root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
         if (page == 0) {
-            String[] names = { "固定样式", "按圈切换", "换挡转速", "电脑连接" };
-            int[] destinations = {1,4,2,3};
-            for (int group = 0; group < 2; group++) {
-                content.addView(label(group == 0 ? "显示" : "车辆与连接",13),new LinearLayout.LayoutParams(-1,dp(19)));
+            String[][] names = { {"固定样式","按圈切换"}, {"换挡转速","后视镜"}, {"电脑连接"} };
+            int[][] destinations = { {1,4}, {2,5}, {3} };
+            for (int group = 0; group < 3; group++) {
+                content.addView(label(group == 0 ? "显示" : group == 1 ? "车辆" : "连接",13),new LinearLayout.LayoutParams(-1,dp(19)));
                 LinearLayout row = new LinearLayout(getContext());
-                for (int column = 0; column < 2; column++) {
-                    final int index = group*2+column, choice = destinations[index];
-                    Button item = button(names[index], () -> { editingLap = -1; show(choice); });
-                    if (group == 0 && (preferences.getInt("layout",0) == 10 ? column == 1 : column == 0)) item.setTextColor(Color.rgb(19,210,108));
+                for (int column = 0; column < names[group].length; column++) {
+                    final int choice = destinations[group][column];
+                    Button item = button(names[group][column], () -> { editingLap = -1; show(choice); });
+                    if (group == 0 && preferences.getInt("mirror",0) == 0 && (preferences.getInt("layout",0) == 10 ? column == 1 : column == 0)
+                            || group == 1 && column == 1 && preferences.getInt("mirror",0) != 0) item.setTextColor(Color.rgb(19,210,108));
                     LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0,-1,1);
                     params.setMargins(dp(2),dp(2),dp(2),dp(2)); row.addView(item,params);
                 }
@@ -88,15 +100,101 @@ final class SettingsDialog extends Dialog {
         } else if (page == 1) gallery();
         else if (page == 2) rpm();
         else if (page == 4) phaseStyles();
+        else if (page == 5) {
+            String[] names = {"仪表","左","中","右"};
+            for (int i = 0; i < names.length; i++) {
+                final int selected = i;
+                Button choice = button(names[i], () -> { selectMirror(selected); dismiss(); });
+                if (preferences.getInt("mirror",0) == i) choice.setTextColor(Color.rgb(19,210,108));
+                LinearLayout row = new LinearLayout(getContext());
+                row.addView(choice,new LinearLayout.LayoutParams(0,-1,1));
+                if (i > 0) {
+                    LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(72),-1);
+                    params.leftMargin = dp(6);
+                    row.addView(button("调整", () -> { selectMirror(selected); editingMirror = selected; show(6); }),params);
+                }
+                content.addView(row,new LinearLayout.LayoutParams(-1,0,1));
+            }
+        }
+        else if (page == 6) mirrorSettings();
         else {
             content.addView(label("有线优先，断开后自动转无线",14));
             content.addView(label(preferences.getString("host", "未设置电脑 IP"), 19));
             content.addView(button("电脑 IP", () -> connection()), new LinearLayout.LayoutParams(-1, dp(40)));
         }
-        root.addView(button(page == 0 ? "返回仪表" : editingLap >= 0 && page == 1 ? "返回圈序" : "返回设置", () -> { if (section == 0) dismiss(); else if (editingLap >= 0 && section == 1) { editingLap = -1; show(4); } else show(0); }),
+        if (page != 6) root.addView(button(page == 0 ? "返回仪表" : editingLap >= 0 && page == 1 ? "返回圈序" : "返回设置", () -> { if (section == 0) dismiss(); else if (editingLap >= 0 && section == 1) { editingLap = -1; show(4); } else show(0); }),
                 new LinearLayout.LayoutParams(-1, dp(40)));
         setContentView(root);
     }
+    private void selectMirror(int selected) {
+        preferences.edit().putInt("mirror",selected).apply(); feed.mirrorView = selected;
+    }
+    private void mirrorSettings() {
+        mirrorStatus = label("",12); content.addView(mirrorStatus);
+        ScrollView scroll = new ScrollView(getContext());
+        LinearLayout list = new LinearLayout(getContext()); list.setOrientation(LinearLayout.VERTICAL);
+        mirrorSliders = new SeekBar[6]; mirrorValues = new TextView[6]; mirrorDragging = new boolean[6];
+        for (int i = 0; i < 6; i++) {
+            final int field = i;
+            TextView value = label("",14); mirrorValues[i] = value;
+            value.setPadding(0,dp(3),0,0); list.addView(value);
+            SeekBar slider = new SeekBar(getContext()); mirrorSliders[i] = slider;
+            slider.setMax(Math.round((MirrorConfig.MAX[i]-MirrorConfig.MIN[i])/MirrorConfig.STEP[i]));
+            slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                public void onProgressChanged(SeekBar bar, int progress, boolean user) {
+                    if (!user) return;
+                    float next = MirrorConfig.MIN[field]+progress*MirrorConfig.STEP[field];
+                    if (feed.setMirrorParameter(editingMirror,field,next)) value.setText(mirrorValue(field,next));
+                    else refreshMirrorSettings();
+                }
+                public void onStartTrackingTouch(SeekBar bar) { mirrorDragging[field] = true; }
+                public void onStopTrackingTouch(SeekBar bar) { mirrorDragging[field] = false; }
+            });
+            list.addView(slider,new LinearLayout.LayoutParams(-1,dp(36)));
+        }
+        scroll.addView(list); content.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        LinearLayout actions = new LinearLayout(getContext());
+        actions.addView(button("返回镜面选择", () -> show(5)),new LinearLayout.LayoutParams(0,dp(40),1));
+        mirrorReset = button("恢复默认", () -> feed.setMirrorParameter(editingMirror,6,0));
+        LinearLayout.LayoutParams resetParams = new LinearLayout.LayoutParams(0,dp(40),1); resetParams.leftMargin = dp(6);
+        actions.addView(mirrorReset,resetParams); content.addView(actions);
+        refreshMirrorSettings();
+        LinearLayout pageRoot = root;
+        mirrorRefresh = new Runnable() {
+            public void run() {
+                if (section != 6 || root != pageRoot || !isShowing()) return;
+                refreshMirrorSettings(); pageRoot.postDelayed(this,200);
+            }
+        };
+        pageRoot.postDelayed(mirrorRefresh,200);
+    }
+    private String mirrorValue(int field,float value) {
+        String[] names = {"视野角（上下）","水平朝向","俯仰","左右偏移","高度偏移","前后偏移"};
+        String[] negative = {"","左 ","低头 ","左 ","下 ","后 "};
+        String[] positive = {"","右 ","抬头 ","右 ","上 ","前 "};
+        String direction = value < -.001f ? negative[field] : value > .001f ? positive[field] : "";
+        return names[field]+"　"+direction+String.format(Locale.US,field < 3 ? "%.1f°" : "%.2f 米",Math.abs(value));
+    }
+    private void refreshMirrorSettings() {
+        boolean enabled = feed.mirrorSettingsReady;
+        MirrorConfig settings = feed.mirrorConfig;
+        mirrorStatus.setText(feed.mirrorSettingsError ? "电脑配置读写失败，未保存" : enabled ? "已连接，可实时调整" : feed.transport.equals("USB") || feed.transport.equals("TCP") ? "等待电脑参数" : "请连接有线或更新电脑端");
+        mirrorReset.setEnabled(enabled); mirrorReset.setAlpha(enabled ? 1f : .45f);
+        for (int field = 0; field < 6; field++) {
+            mirrorSliders[field].setEnabled(enabled);
+            if (!enabled) mirrorDragging[field] = false;
+            if (mirrorDragging[field]) continue;
+            float value = settings.values[editingMirror-1][field];
+            mirrorSliders[field].setProgress(Math.round((value-MirrorConfig.MIN[field])/MirrorConfig.STEP[field]));
+            mirrorValues[field].setText(mirrorValue(field,value));
+        }
+    }
+    private void stopMirrorRefresh() {
+        if (mirrorRefresh != null && root != null) root.removeCallbacks(mirrorRefresh);
+        mirrorRefresh = null;
+    }
+    @Override public void dismiss() { stopMirrorRefresh(); super.dismiss(); }
+    @Override protected void onStop() { stopMirrorRefresh(); super.onStop(); }
     private void gallery() {
         ScrollView scroll = new ScrollView(getContext());
         LinearLayout grid = new LinearLayout(getContext()); grid.setOrientation(LinearLayout.VERTICAL);
@@ -124,7 +222,7 @@ final class SettingsDialog extends Dialog {
                 tile.addView(name, new LinearLayout.LayoutParams(-1, dp(24)));
                 tile.setContentDescription(number+"，点击选择"); tile.setSelected(choice == selected);
                 tile.setOnClickListener(v -> {
-                    if (editingLap < 0) { preferences.edit().putInt("layout", choice).apply(); dismiss(); }
+                    if (editingLap < 0) { preferences.edit().putInt("layout", choice).putInt("mirror",0).apply(); dismiss(); }
                     else { plan[editingLap] = choice; savePlan(plan); editingLap = -1; show(4); }
                 });
                 LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -2, 1);
@@ -176,6 +274,7 @@ final class SettingsDialog extends Dialog {
     }
     @Override public void onBackPressed() {
         if (section == 0) dismiss();
+        else if (section == 6) show(5);
         else if (section == 1 && editingLap >= 0) { editingLap = -1; show(4); }
         else { editingLap = -1; show(0); }
     }

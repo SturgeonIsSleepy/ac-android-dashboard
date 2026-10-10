@@ -7,6 +7,7 @@ if (-not $relayPath.StartsWith($gamePath+[IO.Path]::DirectorySeparatorChar,[Stri
 New-Item -ItemType Directory -Force -Path $relayPath | Out-Null
 Copy-Item -LiteralPath "$PSScriptRoot\relay\acflip_relay\manifest.ini" -Destination $relayPath -Force
 Copy-Item -LiteralPath "$PSScriptRoot\relay\acflip_relay\acflip_relay.lua" -Destination $relayPath -Force
+Copy-Item -LiteralPath "$PSScriptRoot\relay\acflip_relay\mirror.lua" -Destination $relayPath -Force
 $oldEntry=Join-Path $relayPath 'script.lua'
 if (Test-Path -LiteralPath $oldEntry) { Remove-Item -LiteralPath $oldEntry }
 $statePath=Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Assetto Corsa\cfg\extension\state\imgui_settings.ini'

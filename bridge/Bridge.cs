@@ -90,7 +90,8 @@ class Bridge
         raceContext = new RaceContext(gameRoot);
         Console.CancelKeyPress += delegate(object sender, ConsoleCancelEventArgs e) { e.Cancel = true; running = false; };
         using (UdpClient udp = new UdpClient(new IPEndPoint(IPAddress.Any, Port)))
-        using (var tcp = new TcpRelay(Port+1))
+        using (var mirror = new MirrorSource(gameRoot))
+        using (var tcp = new TcpRelay(Port+1,mirror))
         using (var usb = new UsbLink())
         {
             // Windows reports ICMP from a closed phone/probe port on the next Receive.
@@ -109,7 +110,11 @@ class Bridge
             while (running)
             {
                 double now = clock.Elapsed.TotalSeconds;
-                if (!Console.IsInputRedirected && Console.KeyAvailable && Console.ReadKey(true).Key == ConsoleKey.Q) break;
+                if (!Console.IsInputRedirected && Console.KeyAvailable) {
+                    var key = Console.ReadKey(true);
+                    if (!dashboard.MirrorKey(key,mirror.Settings,mirror.Selected) && key.Key == ConsoleKey.Q) break;
+                    nextRender = 0;
+                }
                 while (udp.Available > 0)
                 {
                     IPEndPoint peer = new IPEndPoint(IPAddress.Any, 0);
@@ -190,7 +195,7 @@ class Bridge
                     dashboard.Render(now, status, s.Track ?? "—", s.CarModel ?? "—", p.Rpms, p.Gear, p.SpeedKmh,
                         route.Length, guide == null ? 0 : guide.Cues.Count, totalFrames, sentBytes+tcp.SentBytes,
                         now <= renderTime ? 0 : (totalFrames-renderedFrames)/(now-renderTime), connected, gameRoot,
-                        BitConverter.ToInt32(frame,428) == 1, raceContext.PitLimit,usb.Status);
+                        BitConverter.ToInt32(frame,428) == 1, raceContext.PitLimit,usb.Status,mirror.Status,mirror.Settings);
                     renderedFrames = totalFrames; renderTime = now; nextRender = now + .5;
                 }
             }

@@ -1,10 +1,10 @@
-# AC 安卓赛车仪表 0.8.2
+# AC 安卓赛车仪表 0.9.0
 
 Android 8 及以上的原生赛车仪表，支持普通手机、平板与兼容的折叠屏副屏。横屏随屏幕尺寸缩放，X Flip 682 × 422 外屏为已验证的小屏适配场景。配合可见 Windows 终端连接监视器，读取经典版 Assetto Corsa 共享内存。其他厂商副屏能否启动第三方应用取决于系统限制，不保证每种副屏均可启动
 
-[下载 v0.8.2](https://github.com/SturgeonIsSleepy/ac-android-dashboard/releases/tag/v0.8.2)　[宣传视频](https://github.com/SturgeonIsSleepy/ac-android-dashboard/releases/download/v0.8.1/AC-Android-Dashboard-Promo.mp4)
+[下载 v0.9.0](https://github.com/SturgeonIsSleepy/ac-android-dashboard/releases/tag/v0.9.0)　[宣传视频](https://github.com/SturgeonIsSleepy/ac-android-dashboard/releases/download/v0.8.1/AC-Android-Dashboard-Promo.mp4)
 
-推荐下载完整安装包 `ACFlip-0.8.2.zip`，解压后包含安卓 APK、Windows 桥接、采集脚本、完整桥接源码和验证记录。当前使用调试签名，适合个人实机联调
+推荐下载完整安装包 `ACFlip-0.9.0.zip`，解压后包含安卓 APK、Windows 桥接、采集脚本、完整桥接源码和验证记录。当前使用调试签名，适合个人实机联调
 
 ![直接在外屏打开设置](docs/screenshots/settings-0.8.2.png)
 
@@ -17,10 +17,10 @@ Android 8 及以上的原生赛车仪表，支持普通手机、平板与兼容�
 ## 使用
 
 1. 双击 `dist/ACFlipBridge.exe` 打开电脑终端，显示地址、游戏状态、手机连接、心跳、RTT、收包与丢帧统计
-2. 安卓设备安装 `dist/ac-flip-0.8.2.apk`，应用名称为“AC 外屏仪表”。普通手机直接打开，自动横屏；没有绑定 vivo 硬件或“超级小副屏”
+2. 安卓设备安装 `dist/ac-flip-0.9.0.apk`，应用名称为“AC 外屏仪表”。普通手机直接打开，自动横屏；没有绑定 vivo 硬件或“超级小副屏”
 3. 有线优先：打开手机 USB 调试并授权电脑，桥接自动建立 USB 通道。电脑需要 ADB，可从 [Android 官方 Platform-Tools](https://developer.android.com/tools/releases/platform-tools) 下载，将 `platform-tools` 文件夹放在桥接程序旁；也会寻找 PATH、ANDROID_HOME、ANDROID_SDK_ROOT 与默认 Android SDK。无线时手机与电脑连接同一局域网，填写电脑终端显示的 IPv4 地址。接上有线后自动切换，断开则重试无线。首次 USB 设置见 [Android 官方实机连接说明](https://developer.android.com/studio/run/device)
 4. 进入游戏驾驶会话。X Flip 外屏可在“超级小副屏”桌面上滑，进入完整应用列表，点击“AC 外屏仪表”；普通安卓屏幕不需要该桌面工具
-5. 音量上、下两键同时按住或长按仪表打开设置，点“固定样式”，通过编号缩略图选择。设置直接在当前屏幕打开，X Flip 外屏不要求展开。设置分为“显示”和“车辆与连接”。底栏已移除，选择保存后直接回到全屏仪表。启动时短暂显示快捷键提醒
+5. 音量上、下两键同时按住或长按仪表打开设置，点“固定样式”，通过编号缩略图选择。设置直接在当前屏幕打开，X Flip 外屏不要求展开。设置分为“显示”“车辆”“连接”。底栏已移除，选择保存后直接回到全屏仪表。启动时短暂显示快捷键提醒
 6. 关闭电脑终端即停止连接，或按 `Q` / `Ctrl+C` 退出。程序不安装后台服务，不再默认隐藏运行
 
 阶段自动切换：设置 → 按圈切换，点各圈按钮通过编号缩略图选择，再点右上“启用”。维修区显示进站信息；离开维修区后进入出场圈；下一次通过终点线后使用第 1 飞驰圈样式，之后依次切换。超过配置圈数沿用最后一套，再次进站后重新开始。可以增加或删除圈序，也可以选择固定样式。中途启动应用时无法还原未观测到的进站，当前圈从第 1 套开始
@@ -33,7 +33,7 @@ Android 8 及以上的原生赛车仪表，支持普通手机、平板与兼容�
 
 手机显示端使用 Android Canvas 原生绘制，无 WebView、无浏览器、无云服务器。手机应用只申请网络权限，保持前台显示时常亮；离开应用后停止接收
 
-若 Windows 首次运行提示网络访问，请允许桥接程序在你的局域网内通信。使用 UDP 9876，单台手机遥测载荷约 57 KB/s。手机 VPN 若拦截局域网，需允许本地网络访问
+若 Windows 首次运行提示网络访问，请允许桥接程序在你的局域网内通信。使用 UDP 9876 与 TCP 9877，单台手机主遥测载荷约 57 KB/s；后视图另占带宽，建议优先使用 USB。手机 VPN 若拦截局域网，需允许本地网络访问
 
 ## 四个页面
 
@@ -85,10 +85,49 @@ Windows 执行 `powershell -ExecutionPolicy Bypass -File .\build.ps1 -SdkRoot "D
 
 `tests/probe_bridge.py` 采集真实遥测与发送频率，`tests/ProtocolCheck.java` 检查真实 C# 包与 Android 解码。`tests/LapTimingCheck.java` 检查可变分段、配色与完圈停留，`tests/RallyGuideCheck.cs` 检查方向、弯级、距离和路线闭合，`tests/BurnInCheck.java` 检查像素移位与空闲亮度状态。`tests/RacePhaseCheck.java` 检查维修区、出场圈、可变圈序及会话重置，`tests/phase_visual_check.py` 在真实外屏通过实际设置按钮和缩略图验证完整阶段切换。视觉测试工具位于 `tests/`，只用于开发联调，不随安装包启动
 
-新版实机记录见 `docs/device-validation-0.8.2.md`，旧版历史记录保存在 `docs/`。本版仅验证经典版 AC，不宣称兼容 ACC、Evo 或 Rally。Android 8 为最低 API 兼容目标，其他品牌机型尚未逐机验证。最终参考图已由用户直接提供，复刻样式在原生外屏中实现
+`tests/MirrorSettingsCheck.cs` 独立检查三面镜的持久化、参数边界、非有限值拒绝、单镜重置、84 字节配置包及文件占用后的失败回滚与恢复；`tests/MirrorConfigCheck.java` 使用实际 Android 解码器检查同一配置格式，不依赖 Android 设备。`tests/mirror_settings_transport_check.py` 连接已运行的真实桥接，检查旧订阅兼容、配置修订、电脑与 Lua 配置文件及实际渲染状态，只临时改变一面镜的 FOV 5°，最后恢复原值。运行时保持 AC 会话与采集应用在线，并把 `--settings-file` 指向正在运行的桥接 EXE 旁的 `mirror-settings.txt`；`--game-dir` 可指定游戏目录，`--view 1/2/3` 指定左、中、右，`--image-check` 额外检查 JPEG 内容哈希变化。它不发送合成遥测，也不操作车辆
+
+新版实机记录见 `docs/device-validation-0.9.0.md`，旧版历史记录保存在 `docs/`。本版仅验证经典版 AC，不宣称兼容 ACC、Evo 或 Rally。Android 8 为最低 API 兼容目标，其他品牌机型尚未逐机验证。最终参考图已由用户直接提供，复刻样式在原生外屏中实现
 
 设备视觉脚本是开发联调工具，需要准备实际采集记录，并设置 `ADB`（或把 adb 加入 PATH）和 `ACFLIP_HOST`（电脑局域网 IPv4）。其中外屏 display ID 为本次 X Flip 的验证配置，其他设备需调整；纯 Java 计时和阶段检查不依赖设备
 
 各组件许可见 [LICENSE.md](LICENSE.md)。研究用第三方工具缓存、原始游戏文件、用户配置、构建缓存和本机日志不随仓库分发
 
 图像生成采用内置工具，最终素材在 `app/src/main/assets/hud08/`，提示词与修订记录在 `docs/imagegen-prompts-0.8.json`。数字、图标和框架从透明素材中读取，实时数据、中文标签、可变分段与弯道箭头仍由原生 Canvas 绘制。新素材也复用于车况、燃油和路况显示，保持原来的弯道方向与数据语义
+
+## 0.9.0 后视镜
+
+在外屏设置中进入“车辆 → 后视镜”，选择左、中、右，或选择“仪表”回到原显示。音量上下键和长按仍直接在当前屏幕打开设置，无需内屏。镜面选择保存后立即生效
+
+外屏点镜面右侧的“调整”进入六参数页，上下滚动后拖动相应滑块，点“预览”直接查看当前镜画面，“恢复默认”只恢复该镜。USB 或无线 TCP 连接就绪后可修改，数值以电脑返回的配置为准
+
+电脑终端按 `M` 打开调整页，按 `1`、`2`、`3` 选镜，上下键选择参数，左右键修改，按住 `Shift` 使用五倍步长；`Enter` 输入精确数值后再按 `Enter` 应用，`R` 只恢复当前镜，`Esc` 返回连接监视器。调整期间继续发送遥测
+
+参数范围与方向如下，位移均沿车辆自身坐标，作用于各镜的默认视点：
+
+- 视野角：上下方向的垂直 FOV，20° 到 100°，默认 50°，数值增大可见范围更广
+- 水平朝向：−60° 到 60°，正值朝车辆右侧，左镜默认 −10.2°，中镜默认 0°，右镜默认 10.2°
+- 俯仰：−35° 到 35°，正值抬头，默认 0°
+- 左右偏移：−2 m 到 2 m，正值向车辆右侧移动，默认 0 m
+- 高度偏移：−1 m 到 1 m，正值向车辆上方移动，默认 0 m
+- 前后偏移：−3 m 到 3 m，正值向车辆前方移动，默认 0 m
+
+电脑与外屏通过 TCP 同步同一份配置，调整即时保存到桥接 EXE 旁的 `mirror-settings.txt`，并原子同步到采集应用自己的 `mirror-config.txt`。桥接重新启动会加载上次设置，恢复默认只影响选中的一面镜；配置随这台电脑桥接保存，当前未按车型分别存储。桥接持久化配置文件读写失败时，电脑与外屏显示错误提示；保存失败的修改回退到原值，连接与遥测继续运行。解除文件占用或恢复目录写入权限后，再次调整可保存并清除错误提示
+
+需要安装本版 CSP Lua 采集应用，运行随包 `Install-Relay.ps1` 后进入驾驶会话。本版在 CSP 0.3.0-preview595、Mercedes SLS GT3 和 Silverstone 实测。未安装 CSP、采集应用未加载或车型缺少所选镜面时不会编造画面
+
+三个视角分别读取车型 `mirrors.ini` 中的镜面模型位置，独立渲染后方场景。左右视点按车身尺寸稍向车尾和外侧移动，朝近乎正后方，内侧保留车身参照。中间视角保留后方车辆，并从其独立绘制场景中排除本车座舱，避免头盔、座椅和防滚架遮挡。它是为副屏可读性校准的后视显示，视点、视野与原游戏实体镜面的投影存在差异
+
+画面由车型镜面模型定位后创建的独立场景相机生成，并经过水平翻转形成后视镜方向感。配置改变该独立相机的视点和朝向，游戏原有实体镜面的贴图保持原状
+
+1280 × 720 渲染后缩至 1024 × 576，使用 HDR 颜色转换、轻度对比度和锐化，再以 JPEG 84 传输。采集上限约 20 Hz，实际帧率随游戏负载变化，本次约 14–15 帧/秒；这不是镜头拍摄帧率或延时承诺。Android 原生绘制 16:9 图像，保持比例并随屏幕缩放，不使用浏览器页面
+
+后视图通过 USB 或局域网 TCP 传输，旧 UDP 回退继续提供仪表数据。桥接保留最新后视帧，手机超过 500 ms 没有新的所选画面时隐藏旧图。切回仪表、关闭桥接或失去有效订阅后停止额外渲染。一次采集一个视角，多个客户端同时选镜时，后连接且选择后视镜的客户端优先，当前主要面向单台安卓显示设备
+
+![外屏独立左后视图](docs/screenshots/mirror-left-0.9.0.png)
+
+![外屏独立中后视图](docs/screenshots/mirror-center-0.9.0.png)
+
+![外屏独立右后视图](docs/screenshots/mirror-right-0.9.0.png)
+
+![外屏六参数调整](docs/screenshots/mirror-controls-0.9.0.png)

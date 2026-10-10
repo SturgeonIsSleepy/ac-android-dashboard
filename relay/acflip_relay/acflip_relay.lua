@@ -1,8 +1,10 @@
 -- ACFlip read-only CSP race context, no physics or race-rule changes.
 local output = ac.getFolder(ac.FolderID.ScriptOrigin) .. '/race-context.txt'
 local elapsed, busy = 1, false
+local mirror = require('mirror')
 
 function script.update(dt)
+  mirror.update(dt)
   elapsed = elapsed + dt
   if elapsed < 0.05 or busy then return end
   elapsed = 0

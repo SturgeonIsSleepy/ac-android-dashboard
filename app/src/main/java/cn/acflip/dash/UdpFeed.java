@@ -1,6 +1,8 @@
 package cn.acflip.dash;
 
 import android.os.SystemClock;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.util.Log;
 import java.io.Closeable;
 import java.io.DataInputStream;
@@ -14,6 +16,7 @@ import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.LinkedHashMap;
 
 final class UdpFeed {
     volatile Telemetry latest;
@@ -21,6 +24,46 @@ final class UdpFeed {
     volatile long rttMillis = -1, wirelessRttMillis = -1, received, lost;
     volatile String error = "", transport = "";
     volatile int width, height, display;
+    volatile int mirrorView;
+    volatile MirrorFrame mirrorFrame;
+    volatile long mirrorFrames;
+    volatile MirrorConfig mirrorConfig = MirrorConfig.defaults();
+    volatile boolean mirrorSettingsReady;
+    volatile boolean mirrorSettingsError;
+    private final LinkedHashMap<Integer,MirrorCommand> mirrorCommands = new LinkedHashMap<>();
+    private long mirrorCommandOrder;
+    private final long[] mirrorResetOrder = new long[3];
+    private static final class MirrorCommand {
+        final int view, key; final long order; final byte[] bytes;
+        MirrorCommand(int mirror,int parameter,float value,long sequence) {
+            view = mirror; key = mirror*7+parameter; order = sequence;
+            bytes = MirrorConfig.command(mirror,parameter,value);
+        }
+    }
+    synchronized boolean setMirrorParameter(int view,int field,float value) {
+        if (!mirrorSettingsReady || view < 1 || view > 3 || field < 0 || field > 6 || !Float.isFinite(value)) return false;
+        if (field < 6 && (value < MirrorConfig.MIN[field] || value > MirrorConfig.MAX[field])) return false;
+        MirrorCommand command = new MirrorCommand(view,field,value,++mirrorCommandOrder);
+        if (field == 6) {
+            for (int old = 0; old < 7; old++) mirrorCommands.remove(view*7+old);
+            mirrorResetOrder[view-1] = command.order;
+        }
+        mirrorCommands.put(command.key,command); return true;
+    }
+    private synchronized MirrorCommand nextMirrorCommand() {
+        if (!mirrorSettingsReady) return null;
+        if (mirrorCommands.isEmpty()) return null;
+        Integer key = mirrorCommands.keySet().iterator().next(); return mirrorCommands.remove(key);
+    }
+    private synchronized void restoreMirrorCommand(MirrorCommand command) {
+        if (mirrorCommands.containsKey(command.key) || command.order < mirrorResetOrder[command.view-1]) return;
+        LinkedHashMap<Integer,MirrorCommand> newer = new LinkedHashMap<>(mirrorCommands);
+        mirrorCommands.clear(); mirrorCommands.put(command.key,command); mirrorCommands.putAll(newer);
+    }
+    static final class MirrorFrame {
+        final Bitmap bitmap; final long receivedNanos; final int view;
+        MirrorFrame(Bitmap image, long now, int selected) { bitmap = image; receivedNanos = now; view = selected; }
+    }
     private volatile int generation;
     private Closeable connection;
     private Thread thread;
@@ -35,21 +78,25 @@ final class UdpFeed {
         if (connection != null) try { connection.close(); } catch (IOException e) { Log.w("ACFlip","Close",e); }
         connection = null;
         if (thread != null) thread.interrupt();
-        thread = null; transport = "";
+        thread = null; transport = ""; mirrorSettingsReady = false;
     }
     private boolean active(int token) { return token == generation && !Thread.currentThread().isInterrupted(); }
     private synchronized boolean own(Closeable socket, int token) {
         if (!active(token)) return false;
-        connection = socket; return true;
+        connection = socket; mirrorSettingsReady = false; return true;
     }
-    private synchronized void release(Closeable socket) { if (connection == socket) connection = null; }
-    private byte[] hello(boolean usb) {
-        ByteBuffer b = ByteBuffer.allocate(usb ? 92 : 84).order(ByteOrder.LITTLE_ENDIAN);
+    private synchronized void release(Closeable socket) {
+        if (connection == socket) { connection = null; transport = ""; mirrorSettingsReady = false; }
+    }
+    private byte[] hello(boolean usb, boolean tcp) {
+        ByteBuffer b = ByteBuffer.allocate(tcp ? 100 : usb ? 92 : 84).order(ByteOrder.LITTLE_ENDIAN);
         b.putInt(Telemetry.MAGIC).putInt(3).putLong(SystemClock.elapsedRealtimeNanos()).putLong(rttMillis)
                 .putLong(received).putLong(lost).putInt(width).putInt(height).putInt(display);
         byte[] model = android.os.Build.MODEL.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         b.put(model,0,Math.min(31,model.length));
-        if (usb) b.putLong(84,wirelessRttMillis);
+        if (b.capacity() >= 92) b.putLong(84,wirelessRttMillis);
+        if (b.capacity() >= 96) b.putInt(92,mirrorView);
+        if (b.capacity() == 100) b.putInt(96,1);
         return b.array();
     }
     private synchronized boolean accept(byte[] bytes, int length, int token, String link) {
@@ -69,6 +116,20 @@ final class UdpFeed {
             TrackMap next = TrackMap.parse(bytes,length); if (next == null) return false; map = next;
         } else if (kind == 4 && length == 16) {
             long sent = b.getLong(); if (sent <= now && now-sent < 5_000_000_000L) rttMillis = (now-sent)/1_000_000L;
+        } else if (kind == 8) {
+            if (length != 84 || !(link.equals("USB") || link.equals("TCP"))) return false;
+            MirrorConfig settings = MirrorConfig.parse(bytes); if (settings == null) return false;
+            mirrorConfig = settings; mirrorSettingsReady = true;
+        } else if (kind == 10) {
+            if (length != 12 || !(link.equals("USB") || link.equals("TCP"))) return false;
+            int status = b.getInt(); if (status != 0 && status != 1) return false;
+            mirrorSettingsError = status == 1;
+        } else if (kind == 6 && length > 16) {
+            int selected = b.getInt();
+            if (selected != mirrorView) return true;
+            Bitmap bitmap = BitmapFactory.decodeByteArray(bytes,16,length-16);
+            if (bitmap == null) return false;
+            mirrorFrame = new MirrorFrame(bitmap,now,selected); mirrorFrames++;
         } else return false;
         error = ""; transport = link; return true;
     }
@@ -94,15 +155,21 @@ final class UdpFeed {
                 new Thread(() -> wirelessProbe(wirelessHost,token,socket),"ACFlip-wireless-RTT").start();
             DataInputStream input = new DataInputStream(socket.getInputStream());
             DataOutputStream output = new DataOutputStream(socket.getOutputStream());
-            long nextHello = 0;
+            long nextHello = 0; int sentMirror = -1;
             while (active(token)) {
                 long now = SystemClock.elapsedRealtimeNanos();
-                if (now >= nextHello) {
+                if (now >= nextHello || sentMirror != mirrorView) {
                     if (!link.equals("USB") && usbAvailable()) break;
-                    byte[] packet = hello(link.equals("USB")); output.writeInt(Integer.reverseBytes(packet.length)); output.write(packet); output.flush();
+                    byte[] packet = hello(link.equals("USB"),true); output.writeInt(Integer.reverseBytes(packet.length)); output.write(packet); output.flush();
                     nextHello = now+1_000_000_000L;
+                    sentMirror = mirrorView;
                 }
-                int size = Integer.reverseBytes(input.readInt()); if (size < 8 || size > 1200) break;
+                MirrorCommand command;
+                while ((command = nextMirrorCommand()) != null) {
+                    try { output.writeInt(Integer.reverseBytes(command.bytes.length)); output.write(command.bytes); output.flush(); }
+                    catch (IOException e) { restoreMirrorCommand(command); throw e; }
+                }
+                int size = Integer.reverseBytes(input.readInt()); if (size < 8 || size > 512016) break;
                 byte[] packet = new byte[size]; input.readFully(packet);
                 if (!accept(packet,size,token,link)) break;
                 valid = true;
@@ -153,7 +220,7 @@ final class UdpFeed {
                 long now = SystemClock.elapsedRealtimeNanos();
                 if (now >= nextHello) {
                     if (usbAvailable()) return;
-                    byte[] data = hello(false); socket.send(new DatagramPacket(data,data.length)); nextHello = now+1_000_000_000L;
+                    byte[] data = hello(false,false); socket.send(new DatagramPacket(data,data.length)); nextHello = now+1_000_000_000L;
                 }
                 packet.setLength(buffer.length);
                 try { socket.receive(packet); }
