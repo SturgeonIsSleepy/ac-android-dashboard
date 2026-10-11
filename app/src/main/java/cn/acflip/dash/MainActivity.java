@@ -136,11 +136,12 @@ public class MainActivity extends Activity {
         return Math.max(1, Math.min(t.maxRpm, shiftRpm));
     }
     private void connection() {
-        EditText input = new EditText(this);
+        android.content.Context context = SettingsDialog.screenContext(this);
+        EditText input = new EditText(context);
         input.setSingleLine(); input.setText(host); input.setSelectAllOnFocus(true);
         input.setHint("例如 192.168.1.234");
         input.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
-        new AlertDialog.Builder(this).setTitle("电脑 IP")
+        new AlertDialog.Builder(context).setTitle("电脑 IP")
                 .setView(input).setNegativeButton("取消", null)
                 .setPositiveButton("连接", (dialog, which) -> {
                     host = input.getText().toString().trim();

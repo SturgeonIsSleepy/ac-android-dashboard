@@ -3,15 +3,20 @@ package cn.acflip.dash;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
+import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
+import android.content.res.Configuration;
 import android.graphics.Color;
+import android.graphics.Point;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.os.Bundle;
 import android.view.Gravity;
+import android.view.ContextThemeWrapper;
 import android.view.Window;
 import android.view.WindowManager;
+import android.util.TypedValue;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -36,7 +41,7 @@ final class SettingsDialog extends Dialog {
     private Button mirrorReset;
     private Runnable mirrorRefresh;
     SettingsDialog(Activity owner, int maxRpm, String currentCar, UdpFeed source) {
-        super(owner);
+        super(screenContext(owner));
         feed = source;
         maximum = maxRpm; car = currentCar == null ? "" : currentCar;
         preferences = owner.getSharedPreferences("MainActivity",0);
@@ -61,6 +66,7 @@ final class SettingsDialog extends Dialog {
     }
     private Button button(String value, Runnable action) {
         Button view = new Button(getContext()); view.setText(value); view.setTextSize(14); view.setTextColor(Color.WHITE);
+        view.setAutoSizeTextTypeUniformWithConfiguration(11,14,1,TypedValue.COMPLEX_UNIT_SP);
         view.setAllCaps(false); view.setSingleLine(true); view.setIncludeFontPadding(false); view.setGravity(Gravity.CENTER);
         view.setMinHeight(0); view.setMinimumHeight(0); view.setPadding(dp(8),dp(4),dp(8),dp(4));
         GradientDrawable background = new GradientDrawable(); background.setColor(Color.rgb(49,49,49)); background.setCornerRadius(dp(5));
@@ -277,6 +283,17 @@ final class SettingsDialog extends Dialog {
         else if (section == 6) show(5);
         else if (section == 1 && editingLap >= 0) { editingLap = -1; show(4); }
         else { editingLap = -1; show(0); }
+    }
+    static Context screenContext(Activity owner) {
+        Point size = new Point(); owner.getWindowManager().getDefaultDisplay().getSize(size);
+        int width = owner.getWindow().getDecorView().getWidth(), height = owner.getWindow().getDecorView().getHeight();
+        if (width == 0 || height == 0) { width = size.x; height = size.y; }
+        // Keep native controls at the HUD's physical scale, including sliders and IP dialogs.
+        Configuration configuration = new Configuration(owner.getResources().getConfiguration());
+        configuration.densityDpi = Math.max(1,Math.round(300*Math.min(width/682f,height/422f)));
+        ContextThemeWrapper context = new ContextThemeWrapper(owner,owner.getTheme());
+        context.applyOverrideConfiguration(configuration);
+        return context;
     }
     private int dp(float value) { return Math.round(value*getContext().getResources().getDisplayMetrics().density); }
     private void connection() {

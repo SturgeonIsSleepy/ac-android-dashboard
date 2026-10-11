@@ -1,14 +1,14 @@
-# AC 安卓赛车仪表 0.9.1
+# AC 安卓赛车仪表 0.9.2
 
 Android 8 及以上的原生赛车仪表，支持普通手机、平板与兼容的折叠屏副屏。横屏随屏幕尺寸缩放，X Flip 682 × 422 外屏为已验证的小屏适配场景。配合可见 Windows 终端连接监视器，读取经典版 Assetto Corsa 共享内存。其他厂商副屏能否启动第三方应用取决于系统限制，不保证每种副屏均可启动
 
-[下载 v0.9.1](https://github.com/SturgeonIsSleepy/ac-android-dashboard/releases/tag/v0.9.1)　[宣传视频](https://github.com/SturgeonIsSleepy/ac-android-dashboard/releases/download/v0.8.1/AC-Android-Dashboard-Promo.mp4)
+[下载 v0.9.2](https://github.com/SturgeonIsSleepy/ac-android-dashboard/releases/tag/v0.9.2)　[宣传视频](https://github.com/SturgeonIsSleepy/ac-android-dashboard/releases/download/v0.8.1/AC-Android-Dashboard-Promo.mp4)
 
-推荐下载完整安装包 `ACFlip-0.9.1.zip`，解压后包含安卓 APK、Windows 桥接、采集脚本、完整桥接源码和验证记录。本次只修复电脑桥接，安卓 APK 保持 0.9.0，无需重新安装。当前使用调试签名，适合个人实机联调
+推荐下载完整安装包 `ACFlip-0.9.2.zip`，解压后包含安卓 APK、Windows 桥接、采集脚本、完整桥接源码和验证记录。本次更新安卓显示适配，电脑桥接沿用 0.9.1。当前使用调试签名，适合个人实机联调
 
-![直接在外屏打开设置](docs/screenshots/settings-0.8.2.png)
+![160 dpi 外屏设置](docs/screenshots/settings-0.9.2.png)
 
-![编号缩略图选择样式](docs/screenshots/styles-0.8.2.png)
+![编号缩略图选择样式](docs/screenshots/styles-0.9.2.png)
 
 ![真实驾驶完圈保留三个分段](docs/screenshots/finish.png)
 
@@ -17,13 +17,15 @@ Android 8 及以上的原生赛车仪表，支持普通手机、平板与兼容�
 ## 使用
 
 1. 双击 `dist/ACFlipBridge.exe` 打开电脑终端，显示地址、游戏状态、手机连接、心跳、RTT、收包与丢帧统计
-2. 安卓设备安装 `dist/ac-flip-0.9.0.apk`，应用名称为“AC 外屏仪表”。普通手机直接打开，自动横屏；没有绑定 vivo 硬件或“超级小副屏”
+2. 安卓设备安装 `dist/ac-flip-0.9.2.apk`，应用名称为“AC 外屏仪表”。普通手机直接打开，自动横屏；没有绑定 vivo 硬件或“超级小副屏”
 3. 有线优先：打开手机 USB 调试并授权电脑，桥接自动建立 USB 通道。电脑需要 ADB，可从 [Android 官方 Platform-Tools](https://developer.android.com/tools/releases/platform-tools) 下载，将 `platform-tools` 文件夹放在桥接程序旁；也会寻找 PATH、ANDROID_HOME、ANDROID_SDK_ROOT 与默认 Android SDK。无线时手机与电脑连接同一局域网，填写电脑终端显示的 IPv4 地址。接上有线后自动切换，断开则重试无线。首次 USB 设置见 [Android 官方实机连接说明](https://developer.android.com/studio/run/device)
 4. 进入游戏驾驶会话。X Flip 外屏可在“超级小副屏”桌面上滑，进入完整应用列表，点击“AC 外屏仪表”；普通安卓屏幕不需要该桌面工具
 5. 音量上、下两键同时按住或长按仪表打开设置，点“固定样式”，通过编号缩略图选择。设置直接在当前屏幕打开，X Flip 外屏不要求展开。设置分为“显示”“车辆”“连接”。底栏已移除，选择保存后直接回到全屏仪表。启动时短暂显示快捷键提醒
 6. 关闭电脑终端即停止连接，或按 `Q` / `Ctrl+C` 退出。程序不安装后台服务，不再默认隐藏运行
 
 0.9.1 修复关闭桥接后 ADB 子进程继承监听端口的问题。重复打开新版会提示使用已有监视器并退出，原连接继续运行。升级前如果旧版已退出却仍提示端口占用，关闭旧桥接后运行 `adb kill-server` 清除旧的继承句柄，再打开新版。无需更改防火墙或手机设置。验证记录见 [桥接端口生命周期](docs/bridge-validation-0.9.1.md)
+
+0.9.2 的设置和 IP 输入框按当前窗口大小缩放，文字、编号缩略图、按钮及滑块不再随着系统 DPI 改小。系统字体倍率仍保留，较长按钮文字在可用空间内自动缩放。仪表与后视图继续等比显示，不更改设备的分辨率或 DPI。已验证 X Flip 682 × 422、逻辑 160 dpi 的真实外屏，记录见 [外屏缩放适配](docs/device-validation-0.9.2.md)
 
 阶段自动切换：设置 → 按圈切换，点各圈按钮通过编号缩略图选择，再点右上“启用”。维修区显示进站信息；离开维修区后进入出场圈；下一次通过终点线后使用第 1 飞驰圈样式，之后依次切换。超过配置圈数沿用最后一套，再次进站后重新开始。可以增加或删除圈序，也可以选择固定样式。中途启动应用时无法还原未观测到的进站，当前圈从第 1 套开始
 
