@@ -64,12 +64,29 @@ class Bridge
 
     static int Main(string[] args)
     {
+        using (var instance = new Mutex(false, @"Local\ACFlipBridge"))
+        {
+            bool owned;
+            try { owned = instance.WaitOne(0); }
+            catch (AbandonedMutexException) { owned = true; }
+            if (!owned)
+            {
+                Console.WriteLine("AC FLIP 已在运行，请使用已有连接监视器");
+                return 0;
+            }
+            try { return Start(args); }
+            finally { instance.ReleaseMutex(); }
+        }
+    }
+
+    static int Start(string[] args)
+    {
         timeBeginPeriod(1);
         SetConsoleCtrlHandler(closeHandler, true);
         try { return Run(args); }
         catch (SocketException e)
         {
-            Console.WriteLine("无法监听 UDP 9876，请关闭已有桥接窗口后重试\n" + e.Message);
+            Console.WriteLine("无法建立桥接连接（UDP 9876 / TCP 9877）\n" + e.Message);
             if (!Console.IsInputRedirected) Console.ReadKey(true);
             return 1;
         }
@@ -90,6 +107,7 @@ class Bridge
         raceContext = new RaceContext(gameRoot);
         Console.CancelKeyPress += delegate(object sender, ConsoleCancelEventArgs e) { e.Cancel = true; running = false; };
         using (UdpClient udp = new UdpClient(new IPEndPoint(IPAddress.Any, Port)))
+        using (BridgeSockets.PreventInheritance(udp.Client))
         using (var mirror = new MirrorSource(gameRoot))
         using (var tcp = new TcpRelay(Port+1,mirror))
         using (var usb = new UsbLink())

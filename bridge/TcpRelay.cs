@@ -21,7 +21,8 @@ sealed class TcpRelay : IDisposable
     public TcpRelay(int port, MirrorSource source)
     {
         mirror = source;
-        listener = new TcpListener(IPAddress.Any,port); listener.Start();
+        listener = new TcpListener(IPAddress.Any,port);
+        BridgeSockets.PreventInheritance(listener.Server); listener.Start();
         new Thread(Accept) { IsBackground = true, Name = "ACFlip-TCP-accept" }.Start();
     }
     void Accept()
@@ -81,7 +82,7 @@ sealed class TcpRelay : IDisposable
         public volatile int MirrorView;
         public Peer(TcpRelay parent, TcpClient socket)
         {
-            owner = parent; client = socket; client.NoDelay = true;
+            owner = parent; client = socket; BridgeSockets.PreventInheritance(client.Client); client.NoDelay = true;
             client.SendBufferSize = 8192; client.SendTimeout = 500; client.ReceiveTimeout = 3000;
             Endpoint = (IPEndPoint)client.Client.RemoteEndPoint; stream = client.GetStream();
         }

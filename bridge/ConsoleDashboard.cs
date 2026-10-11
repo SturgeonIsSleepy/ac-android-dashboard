@@ -51,7 +51,7 @@ sealed class ConsoleDashboard
     public ConsoleDashboard()
     {
         Console.OutputEncoding = Encoding.UTF8;
-        Console.Title = "AC FLIP 0.9  连接监视器";
+        Console.Title = "AC FLIP 0.9.1  连接监视器";
         redirected = Console.IsOutputRedirected;
         if (!redirected)
         {
@@ -77,7 +77,7 @@ sealed class ConsoleDashboard
         Dictionary<IPEndPoint, ClientInfo> clients, string gameRoot, bool raceReady, float pitLimit, string usbStatus, string mirrorStatus,MirrorSettings settings)
     {
         var b = new StringBuilder();
-        b.AppendLine("AC FLIP 0.9   连接监视器");
+        b.AppendLine("AC FLIP 0.9.1   连接监视器");
         b.AppendLine("关闭本窗口即断开连接    Ctrl+C / Q 退出");
         b.AppendLine();
         b.AppendLine("电脑 IPv4"); b.AppendLine(addresses);
